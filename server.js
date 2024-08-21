@@ -106,30 +106,110 @@ db.connect((err) => {
     });
   });
 
-  // Route for students
-  app.get("/student", checkLogin, checkRole('student'), (req, res) => {
-    res.render("students", { name: req.session.name, title: "Student Page" });
-  });
 
-  // Route for faculty
-  app.get("/dosen", checkLogin, checkRole('faculty'), (req, res) => {
-    res.render("dosen", { name: req.session.name, title: "Faculty Page" });
+  app.use(checkLogin); // Apply globally, will check for any routes below this line
+  app.use('/student', checkRole('student')); // Apply only to routes under /student
+
+ // Route to render course selection page
+ app.get('/select-courses', checkLogin, (req, res) => {
+  const query = 'SELECT * FROM tb_matkul';
+  db.query(query, (err, courses) => {
+    if (err) throw err;
+    res.render('select-courses', { courses });
   });
+});
+
+// Route to handle course selection form submission
+app.post('/save-courses', checkLogin, (req, res) => {
+  const { course1, course2, course3 } = req.body;
+  const studentId = req.session.userId;
+  
+  // Insert courses into detail_matkul
+  const query = `
+    INSERT INTO tb_detailmatkul (mahasiswa_id, matkul_id)
+    VALUES (?, ?), (?, ?), (?, ?)`;
+  db.query(query, [studentId, course1, studentId, course2, studentId, course3], (err) => {
+    if (err) throw err;
+    res.redirect('/students');
+  });
+});
+  //   res.render('course', res.render("admin", { mahasiswa: mahasiswa, dosen: dosen, title: "SELAMAT DATANG PADA MENU ADMINISTRASI" })
+  //     materials,
+  //     studentName: req.session.name // Pass the student's name to the template
+  //   });
+  // });
+
+
+
+
+
+
+
+  // // Route for students
+  // app.get("/student", checkLogin, checkRole('student'), (req, res) => {
+  //   res.render("students", { name: req.session.name, title: "Student Page" });
+  // });
+
+  // // Route for faculty
+  // app.get("/dosen", checkLogin, checkRole('faculty'), (req, res) => {
+  //   res.render("dosen", { name: req.session.name, title: "Faculty Page" });
+  // });
 
   app.get("/admin", checkLogin, (req, res) => {
-    const sql = "SELECT * FROM tb_mahasiswa WHERE hapus IS NULL";
-    db.query(sql, (err, result) => {
+    const sqlMahasiswa = "SELECT * FROM tb_mahasiswa WHERE hapus IS NULL";
+    const sqlDosen = "SELECT * FROM tb_dosen WHERE hapus IS NULL";
+  
+    db.query(sqlMahasiswa, (err, mahasiswaResult) => {
       if (err) {
-        console.log("Gagal menampilkan data");
+        console.log("Gagal menampilkan data mahasiswa");
       }
-      const users = JSON.parse(JSON.stringify(result));
-      res.render("admin", { datas: users, title: "SELAMAT DATANG PADA MENU ADMINISTRASI" });
+      const mahasiswa = JSON.parse(JSON.stringify(mahasiswaResult));
+  
+      db.query(sqlDosen, (err, dosenResult) => {
+        if (err) {
+          console.log("Gagal menampilkan data dosen");
+        }
+        const dosen = JSON.parse(JSON.stringify(dosenResult));
+  
+        res.render("admin", { mahasiswa: mahasiswa, dosen: dosen, title: "SELAMAT DATANG PADA MENU ADMINISTRASI" });
+      });
+    });
+  });
+
+  app.get("/admin/tambahDosen", checkLogin, checkRole('admin'), (req, res) => {
+    const sqlDosen = "SELECT * FROM tb_dosen WHERE hapus IS NULL";
+    
+    db.query(sqlDosen, (err, dosenResult) => {
+      if (err) {
+        console.log("Gagal menampilkan data dosen");
+        res.status(500).send("Error retrieving data");
+      } else {
+        const dosen = JSON.parse(JSON.stringify(dosenResult));
+        res.render("tambahDosen", { dosen: dosen, title: "SELAMAT DATANG PADA MENU ADMINISTRASI" });
+      }
+    });
+  });
+
+  app.get("/admin/tambahMahasiswa", checkLogin, checkRole('admin'), (req, res) => {
+    const sqlMahasiswa = "SELECT * FROM tb_mahasiswa WHERE hapus IS NULL";
+    
+    db.query(sqlMahasiswa, (err, mahasiswaResult) => {
+      if (err) {
+        console.log("Gagal menampilkan data mahasiswa");
+        res.status(500).send("Error retrieving data");
+      } else {
+        const mahasiswa = JSON.parse(JSON.stringify(mahasiswaResult));
+        res.render("tambahMahasiswa", { mahasiswa: mahasiswa, title: "SELAMAT DATANG PADA MENU ADMINISTRASI" });
+      }
     });
   });
   
 
+  
+  
 
-  app.post("/tambah", checkLogin, checkRole('admin'), (req, res) => {
+
+  app.post("/tambahmahasiswa", checkLogin, checkRole('admin'), (req, res) => {
     const { nim, nama, password, kelas} = req.body;
     
     const insertSql = `INSERT INTO tb_mahasiswa (nim, namamahasiswa, password, kelas) VALUES (?,?,?,?)`;
@@ -143,12 +223,30 @@ db.connect((err) => {
           "data": null,
         });
       } else {
-        res.redirect("/admin");
+        res.redirect("/admin/tambahMahasiswa");
+      }
+    });
+  });
+  app.post("/tambahdosen", checkLogin, checkRole('admin'), (req, res) => {
+    const { nip, namadosen, password} = req.body;
+    
+    const insertDosen = `INSERT INTO tb_dosen (nip, namadosen, password) VALUES (?,?,?)`;
+    const value = [nip, namadosen, password];
+    db.query(insertDosen, value, (err, result) => {
+      if (err) {
+        console.log(err);
+        res.status(500).json({
+          "success": false,
+          "message": err.sqlMessage,
+          "data": null,
+        });
+      } else {
+        res.redirect("/admin/tambahDosen");
       }
     });
   });
   
-  app.post("/update", checkLogin, checkRole('admin'), (req, res) => {
+  app.post("/updatemahasiswa", checkLogin, checkRole('admin'), (req, res) => {
     const { id, nim, nama, password, kelas} = req.body;
     
     const updateSql = `UPDATE tb_mahasiswa SET nim = ?, namamahasiswa = ?, password = ?, kelas = ? WHERE id = ? AND hapus IS NULL`;
@@ -162,12 +260,12 @@ db.connect((err) => {
           "data": null,
         });
       } else {
-        res.redirect("/admin");
+        res.redirect("/admin/tambahMahasiswa");
       }
     });
   });
 
-  app.post("/delete", checkLogin, checkRole('admin'), (req, res) => {
+  app.post("/deletemahasiswa", checkLogin, checkRole('admin'), (req, res) => {
     const { id } = req.body;
 
     const updateSql = "UPDATE tb_mahasiswa SET hapus = ? WHERE id = ?";
@@ -182,7 +280,7 @@ db.connect((err) => {
           "data": null,
         });
       } else {
-        res.redirect("/admin");
+        res.redirect("/admin/tambahMahasiswa");
       }
     });
   });
